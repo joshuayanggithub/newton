@@ -172,6 +172,7 @@ class Example:
     ):
         self.stage_path = stage_path
 
+        # self.device = wp.get_device()
         self.cuda_graph = None
         self.use_cuda_graph = wp.get_device().is_cuda
         self.add_cloth = True
@@ -304,15 +305,15 @@ class Example:
             )
 
         if self.stage_path is not None:
-            self.renderer = newton.utils.SimRendererOpenGL(
-                path=self.stage_path,
+            self.renderer = newton.utils.SimRendererUsd(
+                stage=self.stage_path,
                 model=self.model,
                 scaling=0.05,
                 show_joints=False,
                 show_particles=False,
-                near_plane=0.01,
-                far_plane=100.0,
-                enable_backface_culling=False,
+                # near_plane=0.01,
+                # far_plane=100.0,
+                # enable_backface_culling=False,
             )
 
         else:
@@ -323,6 +324,8 @@ class Example:
             self.capture_cuda_graph()
 
     def set_up_control(self):
+        wp.set_module_options({"enable_backward": True})
+        
         self.control = self.model.control()
 
         # we are controlling the velocity
@@ -470,7 +473,8 @@ class Example:
         with tape:
             eval_fk(model, joint_q, joint_qd, self.temp_state_for_jacobian)
             wp.launch(
-                self.compute_body_out_kernel, 1, inputs=[self.temp_state_for_jacobian.body_qd], outputs=[self.body_out]
+                self.compute_body_out_kernel, 1, inputs=[self.temp_state_for_jacobian.body_qd], outputs=[self.body_out],
+                # device = model.device
             )
 
         for i in range(out_dim):
@@ -502,6 +506,7 @@ class Example:
                 wp.transform(*self.target[:7]),
             ],
             outputs=[self.ee_delta],
+            # device = self.device
         )
 
         self.compute_body_jacobian(
@@ -592,6 +597,10 @@ class Example:
             self.renderer.render(self.state_0)
             self.renderer.end_frame()
 
+            if self.renderer:
+                print(f"Saving USD stage... {frame_idx}")
+                self.renderer.save()
+
 
 if __name__ == "__main__":
     import argparse
@@ -613,6 +622,8 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 
+    print(f"Running example with device: {args.device}, stage path: {args.stage_path}, num frames: {args.num_frames}")
+
     with wp.ScopedDevice(args.device):
         example = Example(stage_path=args.stage_path, num_frames=args.num_frames)
 
@@ -626,3 +637,7 @@ if __name__ == "__main__":
             example.render()
 
             print(f"[{frame_idx:4d}/{example.num_frames}]")
+
+        if example.renderer:
+            print("Saving USD stage...")
+            example.renderer.save()
